@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Inventory Hub</title>
-<meta name="app-version" content="0.13">
+<meta name="app-version" content="0.14">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -209,20 +209,14 @@ table.users th{font-size:12px;color:var(--ink-2);font-weight:500}
     <!-- ---- UPLOAD ---- -->
     <section id="v-upload" class="hidden">
       <h1>Upload a snapshot</h1>
-      <p class="sub">Drop the Monday inventory report. Nothing is saved until you confirm the totals.</p>
+      <p class="sub">Drop the Monday inventory report — the Inform export named <b>ARW Inventory_Data</b>. Nothing is saved until you check the totals.</p>
       <div class="card">
         <div class="row">
           <label class="f">Snapshot date<input id="upDate" type="date"></label>
           <label class="f check"><input id="upME" type="checkbox"> Month-end snapshot</label>
         </div>
-        <div class="drop" id="drop" style="margin-top:14px">Drag the report here, or <label style="color:var(--navy);cursor:pointer;text-decoration:underline">browse<input id="file" type="file" accept=".xlsx,.xls,.csv" class="hidden"></label></div>
+        <div class="drop" id="drop" style="margin-top:14px">Drag <b>ARW Inventory_Data</b> here, or <label style="color:var(--navy);cursor:pointer;text-decoration:underline">browse<input id="file" type="file" accept=".xlsx,.xls,.csv" class="hidden"></label><div class="note" id="lastUp" style="margin-top:8px"></div></div>
         <div id="upMsg" class="msg hidden"></div>
-      </div>
-      <div class="card">
-        <h2 style="margin:0 0 4px;font-size:16px">Snapshots</h2>
-        <p class="note">Removing a snapshot moves it to the archive; Restore brings it back. Re-uploading a date replaces it (the old one is archived).</p>
-        <table class="users" id="snapTable"></table>
-        <div id="snapMsg" class="msg hidden"></div>
       </div>
       <div class="card hidden" id="mapCard">
         <h2 style="margin:0 0 4px;font-size:16px">Match the report's columns</h2>
@@ -247,6 +241,12 @@ table.users th{font-size:12px;color:var(--ink-2);font-weight:500}
           <button class="btn" id="commitBtn">Save snapshot</button>
           <span class="note" id="commitNote">If a snapshot already exists for this date, it is moved to the archive first, never overwritten.</span>
         </div>
+      </div>
+      <div class="card">
+        <h2 style="margin:0 0 4px;font-size:16px">Snapshots</h2>
+        <p class="note">Removing a snapshot moves it to the archive; Restore brings it back. Re-uploading a date replaces it (the old one is archived).</p>
+        <table class="users" id="snapTable"></table>
+        <div id="snapMsg" class="msg hidden"></div>
       </div>
     </section>
 
@@ -290,6 +290,7 @@ table.users th{font-size:12px;color:var(--ink-2);font-weight:500}
    Requires the `inv` schema to be listed under Exposed schemas in Supabase → Settings → API.
    ============================================================ */
 const CHANGELOG = [
+  { date: '2026-09-16', v: '0.14', text: 'Upload page reordered: drop the file, match columns, check totals and save — all in a column — with the Snapshots list moved to the bottom. The drop zone now names the report (ARW Inventory_Data) and shows when the last upload happened and which snapshot date it was saved as.' },
   { date: '2026-09-02', v: '0.13', text: 'SKU rows on the Value drill now lead with the JS part number (Product) with the description underneath, matching every other screen; the label had been showing the description alone. Vendor inflation gains a By category / By node toggle that drills the same way as the Value tree — like-for-like cost change per category, then per node.' },
   { date: '2026-09-02', v: '0.12', text: 'Snapshots list on the Upload tab with a Remove button per snapshot. Removing moves every line to the archive (nothing is deleted) and a Restore link brings it back. Re-uploading a date still works the same way as before.' },
   { date: '2026-09-02', v: '0.11', text: 'The report\'s "Purchase History Link Product" — the older item a product replaced — is now kept on every snapshot line. Nothing shows it yet; it feeds the Phase 2 supersession audit (old item still stocked next to its replacement, and combined demand history across the chain).' },
@@ -383,6 +384,8 @@ async function loadSnapshots() {
   const { data } = await sb.from('snapshot').select('snapshot_date,is_month_end,row_count,total_value,filename,uploaded_at').order('snapshot_date', { ascending: false });
   snapshots = data || [];
   renderSnapTable();
+  const last = [...snapshots].sort((a, b) => (b.uploaded_at || '').localeCompare(a.uploaded_at || ''))[0];
+  if ($('lastUp')) $('lastUp').textContent = last ? `Last upload: ${new Date(last.uploaded_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })} — saved as the ${last.snapshot_date} snapshot${last.filename ? ` (${last.filename})` : ''}.` : 'No uploads yet.';
   const sel = $('snapSel');
   sel.innerHTML = snapshots.map(s => `<option value="${s.snapshot_date}">${s.snapshot_date}${s.is_month_end ? ' (month-end)' : ''} — ${fmt$(s.total_value)}</option>`).join('');
   snapDate = snapshots[0]?.snapshot_date || null;
