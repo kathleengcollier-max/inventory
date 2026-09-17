@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inventory Hub</title>
+<meta name="app-version" content="0.13">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{
+  --navy:#1F3A7A; --navy-deep:#142A5C; --red:#B32A2E; --ink:#1B1F2A; --ink-2:#4A5060; --ink-3:#8A90A0;
+  --line:#D9DDE6; --paper:#FFFFFF; --paper-2:#F5F6F9; --paper-3:#EDEFF4; --ok:#1F7A4D; --warn:#B36B00;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;color:var(--ink);background:var(--paper-2);font-variant-numeric:tabular-nums}
+button{font:inherit;cursor:pointer}
+input,select{font:inherit}
+a{color:var(--navy)}
+.hidden{display:none!important}
+
+/* ---------- top bar ---------- */
+.top{background:var(--navy);color:#fff;display:flex;align-items:center;gap:22px;padding:0 20px;height:52px}
+.top .brand{font-weight:700;font-size:16px;letter-spacing:.2px;white-space:nowrap}
+.top .brand small{font-weight:400;opacity:.7;margin-left:8px;font-size:12px}
+.top nav{display:flex;gap:4px;margin-left:8px}
+.top nav button{background:transparent;color:#fff;border:0;padding:8px 12px;border-radius:6px;opacity:.75}
+.top nav button.on{background:var(--navy-deep);opacity:1}
+.top .spacer{flex:1}
+.top .who{font-size:12px;opacity:.85}
+.top .who button{background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:6px;padding:4px 10px;margin-left:10px}
+
+/* ---------- layout ---------- */
+.wrap{max-width:1280px;margin:0 auto;padding:22px 20px 60px}
+h1{font-size:22px;font-weight:600;margin:0 0 4px}
+.sub{color:var(--ink-2);margin:0 0 18px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:18px 20px;margin-bottom:16px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink-2)}
+label.f input,label.f select{padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);min-width:170px}
+label.f.check{flex-direction:row;align-items:center;gap:8px;margin-top:18px;color:var(--ink);font-size:13px;white-space:nowrap}
+label.f.check input{min-width:0;width:16px;height:16px;padding:0;margin:0}
+.btn{background:var(--navy);color:#fff;border:0;border-radius:6px;padding:8px 14px;font-weight:500}
+.btn.quiet{background:var(--paper-3);color:var(--ink)}
+.btn.danger{background:var(--red)}
+.btn:disabled{opacity:.5;cursor:default}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:#fff;padding:7px 12px;color:var(--ink-2)}
+.seg button.on{background:var(--navy);color:#fff}
+.note{font-size:12px;color:var(--ink-3)}
+.msg{padding:10px 12px;border-radius:6px;background:var(--paper-3);margin:10px 0;font-size:13px}
+.msg.err{background:#FBE9E9;color:#7A1C1C}
+.msg.ok{background:#E6F4EC;color:#175A39}
+
+/* ---------- drill table ---------- */
+.crumbs{display:flex;gap:6px;align-items:center;font-size:13px;margin:6px 0 12px;flex-wrap:wrap}
+.crumbs button{border:0;background:transparent;color:var(--navy);padding:2px 4px}
+.crumbs span{color:var(--ink-3)}
+table.drill{width:100%;border-collapse:collapse}
+table.drill th{text-align:right;font-weight:500;font-size:12px;color:var(--ink-2);padding:8px 10px;border-bottom:2px solid var(--line);white-space:nowrap}
+table.drill th:first-child,table.drill td:first-child{text-align:left}
+table.drill td{padding:7px 10px;border-bottom:1px solid var(--paper-3);text-align:right;white-space:nowrap}
+table.drill tr.node td:first-child{cursor:pointer;color:var(--navy);font-weight:500}
+table.drill tr.node:hover td{background:#F8F9FC}
+table.drill tr.total td{font-weight:600;border-top:2px solid var(--line);border-bottom:0;background:var(--paper-2)}
+.share{display:inline-block;width:70px;height:6px;background:var(--paper-3);border-radius:3px;vertical-align:middle;margin-right:8px;overflow:hidden}
+.share i{display:block;height:100%;background:var(--navy)}
+.dim{color:var(--ink-3)}
+.neg{color:var(--red)}
+
+/* ---------- side panel ---------- */
+.panel{position:fixed;top:52px;right:0;bottom:0;width:min(520px,100%);background:#fff;border-left:1px solid var(--line);box-shadow:-8px 0 24px rgba(20,30,60,.08);padding:20px;overflow:auto;z-index:20}
+.panel h2{margin:0 0 2px;font-size:17px}
+.panel .x{position:absolute;top:14px;right:14px;border:0;background:var(--paper-3);border-radius:6px;padding:4px 10px}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin:14px 0}
+.kv div b{display:block;font-size:11px;color:var(--ink-3);font-weight:500}
+table.mini{width:100%;border-collapse:collapse;font-size:13px}
+table.mini th,table.mini td{padding:6px 8px;border-bottom:1px solid var(--paper-3);text-align:right}
+table.mini th:first-child,table.mini td:first-child{text-align:left}
+table.mini th{font-weight:500;color:var(--ink-2);font-size:12px}
+
+
+/* ---------- upload ---------- */
+.drop{border:2px dashed var(--line);border-radius:10px;padding:34px;text-align:center;color:var(--ink-2);background:#fff}
+.drop.over{border-color:var(--navy);background:#F3F6FC}
+.map{display:grid;grid-template-columns:1fr 24px 1fr;gap:6px 10px;align-items:center;max-width:640px;margin:12px 0}
+.map .h{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.map select{padding:5px 8px;border:1px solid var(--line);border-radius:6px}
+.map .arrow{color:var(--ink-3);text-align:center}
+.stat{display:inline-block;margin-right:22px}
+.stat b{display:block;font-size:11px;color:var(--ink-3);font-weight:500}
+.stat span{font-size:18px;font-weight:600}
+.bar{height:8px;background:var(--paper-3);border-radius:4px;overflow:hidden;margin:10px 0}
+.bar i{display:block;height:100%;background:var(--navy);width:0;transition:width .2s}
+
+/* ---------- login ---------- */
+.login{min-height:100vh;display:grid;place-items:center;background:var(--navy)}
+.login .card{width:360px;padding:28px}
+.login h1{margin-bottom:14px}
+.login label.f{margin-bottom:12px}
+.login label.f input{min-width:0;width:100%}
+
+table.users{width:100%;border-collapse:collapse}
+table.users td,table.users th{padding:7px 8px;border-bottom:1px solid var(--paper-3);text-align:left}
+table.users th{font-size:12px;color:var(--ink-2);font-weight:500}
+@media (max-width:720px){.top{gap:10px;padding:0 12px}.top .brand small{display:none}.wrap{padding:14px 12px}table.drill th:nth-child(n+6),table.drill td:nth-child(n+6){display:none}}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="login" class="login hidden">
+  <div class="card">
+    <h1>Inventory Hub</h1>
+    <label class="f">Email<input id="lEmail" type="email" autocomplete="username"></label>
+    <label class="f">Password<input id="lPass" type="password" autocomplete="current-password"></label>
+    <button class="btn" id="lGo" style="width:100%">Sign in</button>
+    <div id="lMsg" class="msg err hidden"></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <div class="top">
+    <div class="brand">Inventory Hub <small id="verTag" style="cursor:pointer" title="What's new"></small></div>
+    <nav>
+      <button data-view="value" class="on">Value</button>
+      <button data-view="cost">Cost</button>
+      <button data-view="analysis">Analysis</button>
+      <button data-view="upload" class="admin">Upload</button>
+      <button data-view="access" class="admin">Access</button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="who"><span id="whoTxt"></span><button id="signOut">Sign out</button></div>
+  </div>
+
+  <div class="wrap">
+
+    <!-- ---- VALUE ---- -->
+    <section id="v-value">
+      <h1>Inventory value</h1>
+      <p class="sub">Valued at <span id="costLabel">C2</span>. Sales and GP are trailing 12 months from the Sales Dashboard.</p>
+      <div class="card">
+        <div class="row">
+          <label class="f">Snapshot<select id="snapSel"></select></label>
+          <label class="f">Drill order
+            <div class="seg" id="orderSeg">
+              <button data-o="branch_code,vendor_code,node" class="on">Branch › Vendor › Node</button>
+              <button data-o="branch_code,node,vendor_code">Branch › Node › Vendor</button>
+              <button data-o="vendor_code,branch_code,node">Vendor › Branch › Node</button>
+              <button data-o="node,branch_code,vendor_code">Node › Branch › Vendor</button>
+            </div>
+          </label>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div id="treeHost"></div>
+        <div id="treeEmpty" class="msg hidden">No snapshot loaded yet. Upload the Monday inventory report to get started.</div>
+      </div>
+    </section>
+
+
+    <!-- ---- COST ---- -->
+    <section id="v-cost" class="hidden">
+      <h1>Cost movement</h1>
+      <p class="sub">Implied C2 from every invoice line since January 2023: cost of goods divided by units sold, by month. No snapshot needed.</p>
+      <div class="card">
+        <div class="row">
+          <div class="seg" id="costSeg"><button data-t="jumps" class="on">Cost jumps</button><button data-t="lag">Margin lag</button></div>
+          <span id="jumpCtl" class="row">
+            <label class="f">Look back<select id="jMonths"><option value="6">6 months</option><option value="12" selected>12 months</option><option value="24">24 months</option><option value="44">All</option></select></label>
+            <label class="f">Min change<select id="jPct"><option value="0.05">5%</option><option value="0.10" selected>10%</option><option value="0.20">20%</option><option value="0.30">30%</option></select></label>
+            <label class="f">Min units in month<input id="jUnits" type="number" value="3" style="min-width:90px"></label>
+          </span>
+          <span id="lagCtl" class="row hidden">
+            <label class="f">Recent window<select id="lRecent"><option value="2">2 months</option><option value="3" selected>3 months</option><option value="6">6 months</option></select></label>
+            <label class="f">Compared to prior<select id="lBase"><option value="3">3 months</option><option value="6" selected>6 months</option><option value="12">12 months</option></select></label>
+            <label class="f">Min cost rise<select id="lPct"><option value="0.03">3%</option><option value="0.05" selected>5%</option><option value="0.10">10%</option></select></label>
+          </span>
+          <button class="btn quiet" id="costRun" style="margin-top:16px">Refresh</button>
+        </div>
+        <p class="note" id="costNote" style="margin:10px 0 0"></p>
+        <div id="costHost" style="margin-top:12px;overflow:auto"></div>
+      </div>
+    </section>
+
+
+    <!-- ---- ANALYSIS ---- -->
+    <section id="v-analysis" class="hidden">
+      <h1>Analysis</h1>
+      <p class="sub" id="anSub">Five views of where the money sits and how it is moving.</p>
+      <div class="card">
+        <div class="seg" id="anSeg">
+          <button data-t="inflation" class="on">Vendor inflation</button>
+          <button data-t="aging">Aging</button>
+          <button data-t="concentration">Concentration</button>
+          <button data-t="customers">Customer risk</button>
+          <button data-t="cohorts">New items</button>
+          <button data-t="thennow">Then &amp; now</button>
+        </div>
+        <div class="row" id="anCtl" style="margin-top:10px"></div>
+        <p class="note" id="anNote" style="margin:10px 0 0"></p>
+        <div id="anHost" style="margin-top:12px;overflow:auto"></div>
+      </div>
+    </section>
+
+    <!-- ---- UPLOAD ---- -->
+    <section id="v-upload" class="hidden">
+      <h1>Upload a snapshot</h1>
+      <p class="sub">Drop the Monday inventory report. Nothing is saved until you confirm the totals.</p>
+      <div class="card">
+        <div class="row">
+          <label class="f">Snapshot date<input id="upDate" type="date"></label>
+          <label class="f check"><input id="upME" type="checkbox"> Month-end snapshot</label>
+        </div>
+        <div class="drop" id="drop" style="margin-top:14px">Drag the report here, or <label style="color:var(--navy);cursor:pointer;text-decoration:underline">browse<input id="file" type="file" accept=".xlsx,.xls,.csv" class="hidden"></label></div>
+        <div id="upMsg" class="msg hidden"></div>
+      </div>
+      <div class="card">
+        <h2 style="margin:0 0 4px;font-size:16px">Snapshots</h2>
+        <p class="note">Removing a snapshot moves it to the archive; Restore brings it back. Re-uploading a date replaces it (the old one is archived).</p>
+        <table class="users" id="snapTable"></table>
+        <div id="snapMsg" class="msg hidden"></div>
+      </div>
+      <div class="card hidden" id="mapCard">
+        <h2 style="margin:0 0 4px;font-size:16px">Match the report's columns</h2>
+        <p class="note">Your choices are remembered for next time. Anything not matched is ignored.</p>
+        <div class="map" id="map"></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="previewBtn">Check totals</button>
+          <span class="note" id="mapNote"></span>
+        </div>
+      </div>
+      <div class="card hidden" id="prevCard">
+        <div>
+          <span class="stat"><b>Rows</b><span id="pRows"></span></span>
+          <span class="stat"><b>Branches</b><span id="pBranches"></span></span>
+          <span class="stat"><b>SKUs</b><span id="pSkus"></span></span>
+          <span class="stat"><b>Units on hand</b><span id="pUnits"></span></span>
+          <span class="stat"><b>Value at cost</b><span id="pValue"></span></span>
+        </div>
+        <div id="pWarn" class="msg hidden"></div>
+        <div class="bar hidden" id="bar"><i></i></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="commitBtn">Save snapshot</button>
+          <span class="note" id="commitNote">If a snapshot already exists for this date, it is moved to the archive first, never overwritten.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---- ACCESS ---- -->
+    <section id="v-access" class="hidden">
+      <h1>Who can use this</h1>
+      <p class="sub">Accounts are created in Supabase Auth; this list decides what they can see here.</p>
+      <div class="card">
+        <table class="users" id="users"></table>
+        <div class="row" style="margin-top:14px">
+          <label class="f">Email of an existing auth user<input id="aEmail" type="email"></label>
+          <label class="f">Name<input id="aName"></label>
+          <label class="f">Role<select id="aRole"><option value="viewer">Viewer</option><option value="buyer">Buyer</option><option value="admin">Admin</option></select></label>
+          <button class="btn" id="aAdd" style="margin-top:16px">Add</button>
+        </div>
+        <div id="aMsg" class="msg hidden"></div>
+      </div>
+      <div class="card">
+        <h2 style="margin:0 0 4px;font-size:16px">Warehouses</h2>
+        <p class="note">How Inform warehouse columns fold into branches on upload. Blank branch = excluded from inventory value.</p>
+        <table class="users" id="whTable"></table>
+        <div class="row" style="margin-top:12px">
+          <label class="f">Warehouse<input id="wWhse" style="min-width:90px" placeholder="e.g. 11"></label>
+          <label class="f">Branch<select id="wBranch"><option value="">Excluded</option><option value="15">Santa Ana (15)</option><option value="306">Laguna Hills (306)</option><option value="464">Long Beach (464)</option><option value="32">Anaheim (32)</option><option value="14">Hub (14)</option></select></label>
+          <label class="f">Label<input id="wLabel"></label>
+          <label class="f">Note<input id="wNote" style="min-width:240px"></label>
+          <button class="btn" id="wSave" style="margin-top:16px">Save</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div id="panel" class="panel hidden"></div>
+
+<script>
+/* ============================================================
+   Inventory Hub — Phase 1 shell
+   Reads the version from <meta name="app-version"> (single source of truth).
+   Requires the `inv` schema to be listed under Exposed schemas in Supabase → Settings → API.
+   ============================================================ */
+const CHANGELOG = [
+  { date: '2026-09-02', v: '0.13', text: 'SKU rows on the Value drill now lead with the JS part number (Product) with the description underneath, matching every other screen; the label had been showing the description alone. Vendor inflation gains a By category / By node toggle that drills the same way as the Value tree — like-for-like cost change per category, then per node.' },
+  { date: '2026-09-02', v: '0.12', text: 'Snapshots list on the Upload tab with a Remove button per snapshot. Removing moves every line to the archive (nothing is deleted) and a Restore link brings it back. Re-uploading a date still works the same way as before.' },
+  { date: '2026-09-02', v: '0.11', text: 'The report\'s "Purchase History Link Product" — the older item a product replaced — is now kept on every snapshot line. Nothing shows it yet; it feeds the Phase 2 supersession audit (old item still stocked next to its replacement, and combined demand history across the chain).' },
+  { date: '2026-09-02', v: '0.10', text: 'Fix: the "Same-store only" and "Month-end snapshot" checkboxes were sitting in a wide text-box slot, so the box and its label looked unrelated. They now sit together, and same-store spells out what it does.' },
+  { date: '2026-09-02', v: '0.9', text: 'Web nodes now drill one level at a time — HVAC Equipment, then Residential Unitary, then Split Systems, and so on down to the SKU — instead of one long flat list of full paths. Each level shows its own subtotal, and you can stop wherever the question is answered. Works the same way on the Value drill, Then & now, and Aging. Items filed at a shallower level than their neighbours appear as "(items at this level)".' },
+  { date: '2026-09-02', v: '0.8', text: 'Then & now: a total row at the bottom, and a note naming any branch left out by "Same-store only" (the Hub before February 2026, Anaheim before February 2025) so a missing branch is never a mystery — untick the box to include it. Analysis and Cost screens are much faster; margin lag no longer times out.' },
+  { date: '2026-09-02', v: '0.7', text: 'Fix: the Analysis tabs and the cost sparkline in the SKU panel were not responding. A chunk of the app\'s code had been placed inside the stylesheet by mistake, so the browser never ran it. Nothing about the data changed; this only restores the screens that were already described in v0.3 and v0.6.' },
+  { date: '2026-09-02', v: '0.6', text: 'New "Then & now" view in Analysis: pick any two snapshots and see what moved by branch, vendor, web node or SKU, with the sales in between and a plain-language verdict on each line — built but demand doesn\'t support it, drawn down into stockout risk, cleared out, gone but still selling, and so on. Click a row to drill to the SKUs behind it. A same-store toggle leaves out branches that didn\'t exist on the earlier date (Anaheim before Feb 2025, the Hub before Feb 2026) so year-over-year isn\'t distorted by openings.' },
+  { date: '2026-09-02', v: '0.5', text: 'Upload understands the Monday Inform item report (one row per product with a "Whse N …" column group per warehouse: on hand, min qty, min/max expiration, on PO, committed, hits, rank). Each warehouse group becomes one branch line via the warehouse map. C2 is the pooled cost; C1 (DC), C3 (landed), C5 (last PO paid) and C6 (DC without specials) are stored for the Phase 2 replacement-cost work. Date created, last received, last sold, 12-month demand, item status and non-stock flags are all kept. The SKU panel now shows min ROP, its expiration, hits, rank and non-stock per branch.' },
+  { date: '2026-09-02', v: '0.4', text: 'Upload now reads the Inform wide-format valuation report as-is (one row per product, Qty-XX column per warehouse). Warehouse columns fold into branches using the new Warehouses table in Access — 01/11 Santa Ana, 02/12 Laguna Hills, 03/13 Long Beach, 04 Anaheim, 14 Hub; 09/20/21 excluded. Missing web nodes and vendors are filled in from invoice history after each save. Twenty month-end snapshots (Jan 2025–Aug 2026) loaded.' },
+  { date: '2026-09-01', v: '0.3', text: 'Analysis tab: vendor inflation (like-for-like), aging by branch/vendor/node, concentration over time, customer concentration by SKU, new-item cohort curves. Item creation date can be mapped on upload.' },
+  { date: '2026-09-01', v: '0.2', text: 'Cost tab: month-over-month C2 jumps ranked by dollar impact, and margin lag (cost rose, sell price did not). SKU panel gains a 24-month cost sparkline. Cost history built from every invoice line since January 2023.' },
+  { date: '2026-09-01', v: '0.1', text: 'First build: sign-in, inventory value drill by branch / vendor / web node in four orders, SKU detail by branch, snapshot upload with column matching, access list.' }
+];
+const SUPABASE_URL = 'https://clrqtketoeinugbjlnkj.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNscnF0a2V0b2VpbnVnYmpsbmtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2Mjk2MTksImV4cCI6MjA5OTIwNTYxOX0.WVLkiHduuFpU46LtEyi88SgFENMlp-c8iL6hujQEHeA';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { db: { schema: 'inv' } });
+
+const VERSION = document.querySelector('meta[name="app-version"]').content;
+document.getElementById('verTag').textContent = 'v' + VERSION;
+document.getElementById('verTag').onclick = () => { const p = $('panel'); show('panel'); p.innerHTML = '<button class="x" id="pClose">Close</button><h2>What\'s new</h2>' + CHANGELOG.map(c => `<p style="margin:12px 0"><b>v${c.v}</b> <span class="dim">${c.date}</span><br>${esc(c.text)}</p>`).join(''); $('pClose').onclick = () => show('panel', false); };
+
+const BRANCH_NAMES = { 15: 'Santa Ana', 306: 'Laguna Hills', 464: 'Long Beach', 32: 'Anaheim', 14: 'Hub' };
+const FIELDS = [
+  ['branch_code','Branch code *'],['product_number','Product number *'],['product_desc','Description'],
+  ['vendor_code','Vendor code'],['vendor_name','Vendor name'],['web_node','Web node'],
+  ['qty_on_hand','Qty on hand *'],['qty_committed','Qty committed'],['qty_on_order','Qty on order'],
+  ['unit_cost','Unit cost (C2) *'],['min_rop','Min ROP'],['order_qty','Order qty / max'],
+  ['last_sale_date','Last sale date'],['last_receipt_date','Last receipt date'],
+  ['velocity_code','Velocity / class code'],['stock_status','Stock status'],['primary_vendor','Primary vendor'],
+  ['uom','Unit of measure'],['buy_multiple','Buy multiple'],['created_date','Item creation date'],['mfr_no','Manufacturer number'],['web_category','Web node ID (matrix)'],['demand_12m','12-month demand'],['item_status','Item status'],['cost_c1','C1 cost (DC)'],['cost_c3','C3 cost (landed)'],['cost_c5','C5 cost (last PO)'],['cost_c6','C6 cost (DC, no specials)'],['replaces_product','Replaces (older product)'],['ignore','— ignore —']
+];
+const REQUIRED = ['branch_code','product_number','qty_on_hand','unit_cost'];
+const NUMERIC = ['qty_on_hand','qty_committed','qty_on_order','unit_cost','min_rop','order_qty','buy_multiple','demand_12m','cost_c1','cost_c3','cost_c5','cost_c6'];
+const DATES = ['last_sale_date','last_receipt_date','created_date'];
+
+const $ = id => document.getElementById(id);
+const fmt$ = n => n == null ? '—' : (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString();
+const fmtN = n => n == null ? '—' : Math.round(n).toLocaleString();
+const fmtP = n => n == null || !isFinite(n) ? '—' : (n * 100).toFixed(1) + '%';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const show = (id, on = true) => $(id).classList.toggle('hidden', !on);
+const msg = (id, text, kind = '') => { const el = $(id); el.textContent = text; el.className = 'msg ' + kind; show(id, !!text); };
+
+let me = null, access = null, settings = {}, snapshots = [], snapDate = null;
+let order = ['branch_code','vendor_code','node'], path = [];
+const NODE_DEPTH = 7;
+const expandOrder = o => o.flatMap(l => l === 'node' ? Array.from({ length: NODE_DEPTH }, (_, i) => 'node' + (i + 1)) : [l]);
+
+/* ---------- auth ---------- */
+async function boot() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { show('login'); show('app', false); return; }
+  me = session.user;
+  const { data: acc, error } = await sb.from('access').select('*').eq('user_id', me.id).maybeSingle();
+  if (error || !acc || !acc.active) {
+    show('login'); show('app', false);
+    msg('lMsg', error ? 'Could not reach the inventory schema. Is "inv" listed under Exposed schemas in Supabase?' : 'Your account is not set up for Inventory Hub yet. Ask an admin to add you.', 'err');
+    await sb.auth.signOut(); return;
+  }
+  access = acc;
+  $('whoTxt').textContent = acc.full_name || acc.email || me.email;
+  document.querySelectorAll('.admin').forEach(b => b.classList.toggle('hidden', acc.role !== 'admin'));
+  show('login', false); show('app');
+  const { data: st } = await sb.from('settings').select('key,value');
+  (st || []).forEach(r => settings[r.key] = r.value);
+  $('costLabel').textContent = settings.cost_label || 'C2';
+  await loadSnapshots();
+  $('upDate').value = new Date().toISOString().slice(0, 10);
+}
+$('lGo').onclick = async () => {
+  msg('lMsg', '');
+  const { error } = await sb.auth.signInWithPassword({ email: $('lEmail').value.trim(), password: $('lPass').value });
+  if (error) { msg('lMsg', error.message, 'err'); return; }
+  boot();
+};
+$('lPass').addEventListener('keydown', e => { if (e.key === 'Enter') $('lGo').click(); });
+$('signOut').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+/* ---------- nav ---------- */
+document.querySelectorAll('.top nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.top nav button').forEach(x => x.classList.toggle('on', x === b));
+  ['value','cost','analysis','upload','access'].forEach(v => show('v-' + v, v === b.dataset.view));
+  if (b.dataset.view === 'access') loadUsers();
+  if (b.dataset.view === 'cost' && !costLoaded) runCost();
+  if (b.dataset.view === 'analysis' && !anLoaded) runAnalysis();
+});
+
+/* ---------- snapshots + drill ---------- */
+async function loadSnapshots() {
+  const { data } = await sb.from('snapshot').select('snapshot_date,is_month_end,row_count,total_value,filename,uploaded_at').order('snapshot_date', { ascending: false });
+  snapshots = data || [];
+  renderSnapTable();
+  const sel = $('snapSel');
+  sel.innerHTML = snapshots.map(s => `<option value="${s.snapshot_date}">${s.snapshot_date}${s.is_month_end ? ' (month-end)' : ''} — ${fmt$(s.total_value)}</option>`).join('');
+  snapDate = snapshots[0]?.snapshot_date || null;
+  show('treeEmpty', !snapDate);
+  path = []; renderTree();
+}
+$('snapSel').onchange = e => { snapDate = e.target.value; path = []; renderTree(); };
+$('orderSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
+  $('orderSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  order = b.dataset.o.split(','); path = []; renderTree();
+});
+const levelName = l => /^node\d$/.test(l) ? 'Web node' : ({ branch_code: 'Branch', vendor_code: 'Vendor', web_node: 'Web node', product_number: 'SKU' }[l]);
+const keyLabel = (lvl, key, label) => lvl === 'branch_code' ? (BRANCH_NAMES[key] ? `${BRANCH_NAMES[key]} (${key})` : key) : label;
+
+async function renderTree() {
+  const host = $('treeHost'); host.innerHTML = '';
+  if (!snapDate) return;
+  // crumbs
+  const c = $('crumbs'); c.innerHTML = '';
+  const all = document.createElement('button'); all.textContent = 'All branches'; all.onclick = () => { path = []; renderTree(); }; c.appendChild(all);
+  path.forEach((p, i) => {
+    if (p.hidden) return;
+    const s = document.createElement('span'); s.textContent = '›'; c.appendChild(s);
+    const b = document.createElement('button'); b.textContent = p.label; b.onclick = () => { path = path.slice(0, i + 1); renderTree(); }; c.appendChild(b);
+  });
+  const levels = expandOrder(order);
+  let lvl = path.length >= levels.length ? 'product_number' : levels[path.length];
+  const { data, error } = await sb.rpc('rpc_tree', { p_date: snapDate, p_levels: levels, p_path: path.map(p => p.key) });
+  if (error) { host.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
+  let rows = data || [];
+  // node level with nothing deeper: skip the remaining node levels silently
+  const parentKey = path.length ? path[path.length - 1].key : null;
+  if (/^node\d$/.test(lvl) && rows.length === 1 && rows[0].key === parentKey) {
+    while (path.length < levels.length && /^node\d$/.test(levels[path.length])) path.push({ key: parentKey, label: null, hidden: true });
+    return renderTree();
+  }
+  rows = rows.map(r => (/^node\d$/.test(lvl) && r.key === parentKey) ? { ...r, label: '(items at this level)', leafItems: true } : r);
+  const tot = rows.reduce((a, r) => ({ value: a.value + +r.value, units: a.units + +r.units, sales: a.sales + +r.sales_12m, gp: a.gp + +r.gp_12m, cogs: a.cogs + +r.cogs_12m, skus: a.skus + +r.skus }), { value: 0, units: 0, sales: 0, gp: 0, cogs: 0, skus: 0 });
+  const showCost = access.can_see_cost;
+  const t = document.createElement('table'); t.className = 'drill';
+  t.innerHTML = `<thead><tr><th>${levelName(lvl)}</th><th>Value</th><th>Share</th><th>Units</th><th>SKUs</th><th>Sales 12m</th><th>GP%</th><th>Turns</th><th>Days of supply</th></tr></thead>`;
+  const tb = document.createElement('tbody');
+  const rowHtml = (r, isTotal) => {
+    const v = +r.value, share = tot.value ? v / tot.value : 0, gpp = +r.sales_12m ? +r.gp_12m / +r.sales_12m : null;
+    const turns = v > 0 ? +r.cogs_12m / v : null, dos = +r.cogs_12m > 0 ? v / (+r.cogs_12m / 365) : null;
+    return `<td>${isTotal ? 'Total' : (lvl === 'product_number' ? `${esc(r.key)}<br><span class="dim" style="font-size:12px;font-weight:400">${esc(r.label)}</span>` : esc(keyLabel(lvl, r.key, r.label)))}</td>
+      <td>${showCost ? fmt$(v) : '<span class="dim">hidden</span>'}</td>
+      <td>${isTotal ? '' : `<span class="share"><i style="width:${Math.min(100, share * 100)}%"></i></span>${fmtP(share)}`}</td>
+      <td>${fmtN(r.units)}</td><td>${fmtN(r.skus)}</td>
+      <td>${fmt$(r.sales_12m)}</td><td>${fmtP(gpp)}</td>
+      <td>${turns == null ? '—' : turns.toFixed(1)}</td>
+      <td class="${dos != null && dos > 365 ? 'neg' : ''}">${dos == null ? '<span class="dim">no sales</span>' : fmtN(dos)}</td>`;
+  };
+  rows.forEach(r => {
+    const tr = document.createElement('tr'); tr.className = 'node'; tr.innerHTML = rowHtml(r, false);
+    tr.firstElementChild.onclick = () => {
+      if (lvl === 'product_number') openSku(r.key);
+      else if (r.leafItems) { while (path.length < levels.length && /^node\d$/.test(levels[path.length])) path.push({ key: r.key, label: null, hidden: true }); renderTree(); }
+      else { path.push({ key: r.key, label: keyLabel(lvl, r.key, r.label) }); renderTree(); }
+    };
+    tb.appendChild(tr);
+  });
+  const tr = document.createElement('tr'); tr.className = 'total';
+  tr.innerHTML = rowHtml({ value: tot.value, units: tot.units, skus: tot.skus, sales_12m: tot.sales, gp_12m: tot.gp, cogs_12m: tot.cogs }, true);
+  tb.appendChild(tr); t.appendChild(tb); host.appendChild(t);
+}
+
+async function renderSnapTable() {
+  const t = $('snapTable'); if (!t) return;
+  const { data: arch } = access.role === 'admin' ? await sb.from('snapshot_archive').select('snapshot_date').then(r => ({ data: [...new Set((r.data || []).map(x => x.snapshot_date))] })) : { data: [] };
+  const restorable = (arch || []).filter(d => !snapshots.some(s => s.snapshot_date === d)).sort().reverse();
+  t.innerHTML = '<tr><th>Date</th><th>Type</th><th>Lines</th><th>Value</th><th>File</th><th></th></tr>' +
+    snapshots.map(s => `<tr><td>${s.snapshot_date}</td><td>${s.is_month_end ? 'month-end' : 'weekly'}</td><td>${fmtN(s.row_count)}</td><td>${fmt$(s.total_value)}</td><td class="dim">${esc(s.filename || '')}</td><td>${access.role === 'admin' ? `<button class="btn quiet" data-rm="${s.snapshot_date}" style="padding:3px 9px;font-size:12px">Remove</button>` : ''}</td></tr>`).join('') +
+    restorable.map(d => `<tr><td class="dim">${d}</td><td class="dim" colspan="4">in archive</td><td><button class="btn quiet" data-rs="${d}" style="padding:3px 9px;font-size:12px">Restore</button></td></tr>`).join('');
+  t.querySelectorAll('button[data-rm]').forEach(b => b.onclick = async () => {
+    const d = b.dataset.rm; const s = snapshots.find(x => x.snapshot_date === d);
+    if (!confirm(`Remove the ${d} snapshot (${fmtN(s.row_count)} lines, ${fmt$(s.total_value)})? It moves to the archive and can be restored.`)) return;
+    const { data, error } = await sb.rpc('remove_snapshot', { p_date: d, p_reason: 'removed by ' + (access.full_name || access.email) });
+    msg('snapMsg', error ? error.message : `Removed ${d} — ${fmtN(data.archived_rows)} lines archived.`, error ? 'err' : 'ok'); await loadSnapshots();
+  });
+  t.querySelectorAll('button[data-rs]').forEach(b => b.onclick = async () => {
+    const { data, error } = await sb.rpc('restore_snapshot', { p_date: b.dataset.rs });
+    msg('snapMsg', error ? error.message : `Restored ${b.dataset.rs} — ${fmtN(data.rows)} lines.`, error ? 'err' : 'ok'); await loadSnapshots();
+  });
+}
+
+/* ---------- SKU panel ---------- */
+async function openSku(pn) {
+  const p = $('panel'); show('panel'); p.innerHTML = '<button class="x" onclick="document.getElementById(\'panel\').classList.add(\'hidden\')">Close</button><p class="note">Loading…</p>';
+  const [{ data: rows }, { data: hdr0 }, { data: trend }] = await Promise.all([
+    snapDate ? sb.rpc('rpc_sku', { p_product: pn, p_date: snapDate }) : Promise.resolve({ data: [] }),
+    snapDate ? sb.from('snapshot_line').select('product_desc,vendor_name,web_node').eq('snapshot_date', snapDate).eq('product_number', pn).limit(1).maybeSingle() : Promise.resolve({ data: null }),
+    sb.rpc('rpc_cost_trend', { p_product: pn })
+  ]);
+  const r = rows || [], tr = trend || [];
+  const hdr = hdr0 || (tr.length ? await sb.from('sku_cost_month').select('product_desc,vendor_name,web_node').eq('product_number', pn).order('month', { ascending: false }).limit(1).maybeSingle().then(x => x.data) : null);
+  const totV = r.reduce((a, x) => a + +x.value, 0), totQ = r.reduce((a, x) => a + +x.qty_on_hand, 0), totS = r.reduce((a, x) => a + +(x.sales_12m || 0), 0);
+  p.innerHTML = `<button class="x" id="pClose">Close</button>
+    <h2>${esc(pn)}</h2><p class="sub" style="margin:0">${esc(hdr?.product_desc || '')}</p>
+    <p class="note">${esc(hdr?.vendor_name || '')}${hdr?.web_node ? ' · ' + esc(hdr.web_node) : ''}</p>
+    <div class="kv"><div><b>On hand, all branches</b>${fmtN(totQ)} units</div><div><b>Value at ${esc(settings.cost_label || 'C2')}</b>${access.can_see_cost ? fmt$(totV) : 'hidden'}</div>
+    <div><b>Sales, trailing 12m</b>${fmt$(totS)}</div><div><b>Snapshot</b>${snapDate || '<span class="dim">none yet</span>'}</div></div>
+    <table class="mini"><thead><tr><th>Branch</th><th>On hand</th><th>Comm.</th><th>On PO</th><th>Min ROP</th><th>Rank</th><th>Hits</th><th>Sold 12m</th><th>Days supply</th></tr></thead><tbody>
+    ${r.map(x => `<tr><td>${BRANCH_NAMES[x.branch_code] || x.branch_code}${x.non_stock ? ' <span class="dim" title="non-stock at this branch">ns</span>' : ''}</td><td>${fmtN(x.qty_on_hand)}</td><td>${x.qty_committed == null ? '—' : fmtN(x.qty_committed)}</td><td>${x.qty_on_order == null ? '—' : fmtN(x.qty_on_order)}</td><td title="${x.rop_exp_date ? 'expires ' + x.rop_exp_date : ''}">${x.min_rop == null ? '—' : fmtN(x.min_rop)}</td><td>${x.velocity_code || '—'}</td><td>${x.hits == null ? '—' : fmtN(x.hits)}</td><td>${fmtN(x.qty_12m)}</td><td>${x.days_of_supply == null ? '<span class="dim">—</span>' : fmtN(x.days_of_supply)}</td></tr>`).join('')}
+    </tbody></table>
+    ${trendHtml(tr)}`;
+  $('pClose').onclick = () => show('panel', false);
+}
+
+
+/* ---------- cost movement ---------- */
+let costTab = 'jumps', costLoaded = false;
+$('costSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
+  $('costSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  costTab = b.dataset.t; show('jumpCtl', costTab === 'jumps'); show('lagCtl', costTab === 'lag'); runCost();
+});
+$('costRun').onclick = runCost;
+async function runCost() {
+  costLoaded = true;
+  const host = $('costHost'); host.innerHTML = '<p class="note">Working…</p>';
+  const skuCell = (pn, desc) => `<td><a href="#" data-sku="${esc(pn)}" style="font-weight:500;text-decoration:none">${esc(pn)}</a><br><span class="dim" style="font-size:12px">${esc(desc || '')}</span></td>`;
+  if (costTab === 'jumps') {
+    const { data, error } = await sb.rpc('rpc_cost_jumps', { p_months: +$('jMonths').value, p_min_pct: +$('jPct').value, p_min_units: +$('jUnits').value, p_limit: 300 });
+    if (error) { host.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
+    $('costNote').textContent = `${data.length} SKUs with a month-over-month C2 move of ${Math.round(+$('jPct').value * 100)}% or more, ranked by the move multiplied by units sold in the last 12 months. Each SKU shows its biggest move.`;
+    host.innerHTML = `<table class="drill"><thead><tr><th>SKU</th><th>Vendor</th><th>When</th><th>Cost before</th><th>Cost after</th><th>Change</th><th>Units 12m</th><th>Annual impact</th><th>On hand now</th></tr></thead><tbody>` +
+      data.map(r => `<tr class="node">${skuCell(r.product_number, r.product_desc)}<td style="text-align:left">${esc(r.vendor_name || '')}</td><td>${r.prev_month.slice(0,7)} → ${r.month.slice(0,7)}</td><td>${fmt$(r.prev_cost)}</td><td>${fmt$(r.cost)}</td><td class="${+r.change_pct > 0 ? 'neg' : ''}">${(+r.change_pct > 0 ? '+' : '') + fmtP(r.change_pct)}</td><td>${fmtN(r.units_12m)}</td><td>${fmt$(r.impact)}</td><td>${r.on_hand == null ? '<span class="dim">no snapshot</span>' : fmtN(r.on_hand)}</td></tr>`).join('') + '</tbody></table>';
+  } else {
+    const { data, error } = await sb.rpc('rpc_margin_lag', { p_recent_months: +$('lRecent').value, p_base_months: +$('lBase').value, p_min_cost_pct: +$('lPct').value, p_min_units: 5, p_limit: 300 });
+    if (error) { host.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
+    $('costNote').textContent = `${data.length} SKUs where C2 rose at least ${Math.round(+$('lPct').value * 100)}% in the last ${$('lRecent').value} months versus the ${$('lBase').value} before, and the sell price did not keep up. "GP at stake" is the recent sales multiplied by the GP points lost.`;
+    host.innerHTML = `<table class="drill"><thead><tr><th>SKU</th><th>Vendor</th><th>Cost</th><th>Sell</th><th>GP% before</th><th>GP% now</th><th>Units recent</th><th>GP at stake</th></tr></thead><tbody>` +
+      data.map(r => `<tr class="node">${skuCell(r.product_number, r.product_desc)}<td style="text-align:left">${esc(r.vendor_name || '')}</td><td>${fmt$(r.cost_before)} → ${fmt$(r.cost_after)} <span class="neg">(+${fmtP(r.cost_change_pct)})</span></td><td>${fmt$(r.sell_before)} → ${fmt$(r.sell_after)} <span class="dim">(${(+r.sell_change_pct >= 0 ? '+' : '') + fmtP(r.sell_change_pct)})</span></td><td>${fmtP(r.gp_pct_before)}</td><td class="neg">${fmtP(r.gp_pct_after)}</td><td>${fmtN(r.units_recent)}</td><td>${fmt$(r.gp_dollars_at_stake)}</td></tr>`).join('') + '</tbody></table>';
+  }
+  host.querySelectorAll('a[data-sku]').forEach(a => a.onclick = e => { e.preventDefault(); openSku(a.dataset.sku); });
+}
+
+function trendHtml(t) {
+  if (!t.length) return '<p class="note" style="margin-top:16px">No invoice history for this SKU.</p>';
+  const last = t.slice(-24); const max = Math.max(...last.map(x => +x.cost || 0)) || 1;
+  const W = 460, H = 90, step = W / Math.max(1, last.length - 1);
+  const pts = last.map((x, i) => `${(i * step).toFixed(1)},${(H - 8 - (+x.cost / max) * (H - 16)).toFixed(1)}`).join(' ');
+  const rows = last.slice(-6).reverse().map(x => `<tr><td>${x.month.slice(0,7)}</td><td>${fmtN(x.units)}</td><td>${fmt$(x.cost)}</td><td>${fmt$(x.sell)}</td><td>${fmtP(x.gp_pct)}</td></tr>`).join('');
+  return `<h3 style="font-size:14px;margin:20px 0 6px">Implied ${esc(settings.cost_label || 'C2')}, last ${last.length} months</h3>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block"><polyline fill="none" stroke="#1F3A7A" stroke-width="2" points="${pts}"/></svg>
+    <div class="row" style="justify-content:space-between;font-size:11px;color:var(--ink-3)"><span>${last[0].month.slice(0,7)}</span><span>peak ${fmt$(max)}</span><span>${last[last.length-1].month.slice(0,7)}</span></div>
+    <table class="mini" style="margin-top:8px"><thead><tr><th>Month</th><th>Units</th><th>Cost</th><th>Sell</th><th>GP%</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+
+/* ---------- analysis ---------- */
+let anTab = 'inflation', anLoaded = false;
+$('anSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
+  $('anSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); anTab = b.dataset.t; runAnalysis();
+});
+const skuLink = (pn, desc) => `<td><a href="#" data-sku="${esc(pn)}" style="font-weight:500;text-decoration:none">${esc(pn)}</a>${desc ? `<br><span class="dim" style="font-size:12px">${esc(desc)}</span>` : ''}</td>`;
+const tbl = (heads, rows) => `<table class="drill"><thead><tr>${heads.map((h, i) => `<th${i === 0 ? '' : ''}>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
+const noSnap = '<div class="msg">This view needs at least one snapshot. Upload the Monday report and come back.</div>';
+function renderInflation(data, g, onDrill) {
+  const host = $('anHost'), note = $('anNote');
+  const years = [...new Set(data.map(r => r.year))].sort((a, b) => b - a);
+  const byK = {}; data.forEach(r => { (byK[r.key] ||= { name: r.label, key: r.key, y: {} }).y[r.year] = r; });
+  const isNode = /^node\d$/.test(g);
+  const rows = Object.values(byK).sort((a, b) => (+(b.y[years[0]]?.cogs || 0)) - (+(a.y[years[0]]?.cogs || 0))).map(v =>
+    `<tr><td style="text-align:left">${isNode ? `<span data-k="${esc(v.key)}" data-l="${esc(v.name)}" style="cursor:pointer;color:var(--navy);font-weight:500">${esc(v.name)}</span>` : esc(v.name)}</td>${years.map(y => { const r = v.y[y]; if (!r) return '<td class="dim">—</td><td class="dim">—</td>'; const p = +r.inflation_pct; return `<td class="${p > 0.05 ? 'neg' : ''}">${(p > 0 ? '+' : '') + fmtP(p)}</td><td class="dim">${fmt$(r.cogs)} · ${r.skus_compared}</td>`; }).join('')}</tr>`);
+  note.textContent = `Like-for-like: each year's cost of goods on each SKU versus what the same units would have cost at the prior year's C2 for that SKU, so mix changes cannot fake inflation. Second column per year is cost of goods compared and SKU count.${isNode ? ' Click a row to go one level down.' : ' Vendors under $50,000 in sales hidden.'}`;
+  host.innerHTML = tbl([isNode ? (g === 'node1' ? 'Category' : 'Node') : 'Vendor', ...years.flatMap(y => [`${y} change`, ''])], rows);
+  host.querySelectorAll('span[data-k]').forEach(el => el.onclick = () => onDrill(el.dataset.k, el.dataset.l));
+}
+async function runAnalysis() {
+  anLoaded = true;
+  const host = $('anHost'), ctl = $('anCtl'), note = $('anNote'); host.innerHTML = '<p class="note">Working…</p>'; ctl.innerHTML = ''; note.textContent = '';
+  const wire = () => host.querySelectorAll('a[data-sku]').forEach(a => a.onclick = e => { e.preventDefault(); openSku(a.dataset.sku); });
+  if (anTab === 'inflation') {
+    ctl.innerHTML = `<div class="seg" id="infSeg"><button data-g="vendor_code" class="on">By vendor</button><button data-g="node1">By category</button></div><span class="note" id="infPath"></span>`;
+    let ig = 'vendor_code', ipath = [];
+    const drawInf = async () => {
+      host.innerHTML = '<p class="note">Working…</p>';
+      const last = ipath[ipath.length - 1];
+      const { data, error } = await sb.rpc('rpc_inflation_by', { p_group: ig, p_filter_group: last ? last.group : null, p_filter_key: last ? last.key : null, p_min_sales: ig === 'vendor_code' ? 50000 : 25000 });
+      if (error) { host.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
+      $('infPath').innerHTML = ipath.length ? ipath.map(p => esc(p.label)).join(' › ') + ' <a href="#" id="infUp">↑ up</a>' : '';
+      const up = $('infUp'); if (up) up.onclick = e => { e.preventDefault(); ipath.pop(); ig = ipath.length ? 'node' + (ipath.length + 1) : 'node1'; drawInf(); };
+      renderInflation(data, ig, (key, label) => { ipath.push({ group: ig, key, label }); ig = 'node' + (ipath.length + 1); drawInf(); });
+    };
+    $('infSeg').querySelectorAll('button').forEach(b => b.onclick = () => { $('infSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); ig = b.dataset.g; ipath = []; drawInf(); });
+    drawInf(); return;
+  }
+  if (false) {
+    const { data, error } = await sb.rpc('rpc_vendor_inflation', { p_min_sales: 50000 });
+    if (error) { host.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
+    const years = [...new Set(data.map(r => r.year))].sort((a, b) => b - a);
+    const byV = {}; data.forEach(r => { (byV[r.vendor_code] ||= { name: r.vendor_name, y: {} }).y[r.year] = r; });
+    const rows = Object.values(byV).sort((a, b) => (+(b.y[years[0]]?.cogs || 0)) - (+(a.y[years[0]]?.cogs || 0))).map(v =>
+      `<tr><td style="text-align:left">${esc(v.name)}</td>${years.map(y => { const r = v.y[y]; if (!r) return '<td class="dim">—</td><td class="dim">—</td>'; const p = +r.inflation_pct; return `<td class="${p > 0.05 ? 'neg' : ''}">${(p > 0 ? '+' : '') + fmtP(p)}</td><td class="dim">${fmt$(r.cogs)} · ${r.skus_compared}</td>`; }).join('')}</tr>`);
+    note.textContent = 'Like-for-like: this year\'s cost of goods on each SKU versus what the same units would have cost at last year\'s C2 for that SKU, so product mix cannot fake inflation. Second column per year is cost of goods compared and SKU count. Vendors under $50,000 in sales hidden.';
+    host.innerHTML = tbl(['Vendor', ...years.flatMap(y => [`${y} change`, ''])], rows);
+  }
+  if (anTab === 'aging') {
+    if (!snapDate) { host.innerHTML = noSnap; return; }
+    ctl.innerHTML = `<div class="seg" id="agSeg"><button data-g="branch_code" class="on">By branch</button><button data-g="vendor_code">By vendor</button><button data-g="node1">By category</button><button data-g="node2">By node</button><button data-g="skus">Oldest stock</button></div>`;
+    const draw = async g => {
+      if (g === 'skus') {
+        const { data } = await sb.rpc('rpc_aging_skus', { p_date: snapDate, p_min_days: 365, p_limit: 300 });
+        note.textContent = `${data.length} branch/SKU lines with stock on hand and no receipt in 365+ days, largest value first.`;
+        host.innerHTML = tbl(['SKU', 'Branch', 'On hand', 'Value', 'Last receipt', 'Days', 'Last sale', 'Sold 12m'], data.map(r => `<tr>${skuLink(r.product_number, r.product_desc)}<td>${BRANCH_NAMES[r.branch_code] || r.branch_code}</td><td>${fmtN(r.qty_on_hand)}</td><td>${fmt$(r.value)}</td><td>${r.last_receipt_date}</td><td>${r.age_days}</td><td>${r.last_sale_date || '—'}</td><td>${fmtN(r.qty_12m)}</td></tr>`)); wire(); return;
+      }
+      const { data } = await sb.rpc('rpc_aging', { p_date: snapDate, p_group: g });
+      note.textContent = 'Value of stock on hand by days since last receipt. "Unknown" means the report had no last receipt date for the line.';
+      host.innerHTML = tbl([g === 'branch_code' ? 'Branch' : g === 'vendor_code' ? 'Vendor' : g === 'node1' ? 'Category' : 'Node', '0–90', '90–180', '180–365', '365+', 'Unknown', 'Total', 'SKUs 365+'],
+        data.map(r => `<tr><td style="text-align:left">${g === 'branch_code' ? (BRANCH_NAMES[r.grp] || r.grp) : esc(r.label)}</td><td>${fmt$(r.b0_90)}</td><td>${fmt$(r.b90_180)}</td><td>${fmt$(r.b180_365)}</td><td class="neg">${fmt$(r.b365)}</td><td class="dim">${fmt$(r.unknown)}</td><td><b>${fmt$(r.total)}</b></td><td>${fmtN(r.skus_365)}</td></tr>`));
+    };
+    ctl.querySelectorAll('button').forEach(b => b.onclick = () => { ctl.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); draw(b.dataset.g); });
+    draw('branch_code');
+  }
+  if (anTab === 'concentration') {
+    const { data } = await sb.rpc('rpc_concentration');
+    if (!data?.length) { host.innerHTML = noSnap; return; }
+    note.textContent = 'How much of total value sits in the ten largest SKUs and the three largest vendors, one row per snapshot.';
+    host.innerHTML = tbl(['Snapshot', 'Total value', 'Top 10 SKUs', 'Top 3 vendors', 'Largest vendor', 'SKUs', 'Vendors'], data.reverse().map(r => `<tr><td style="text-align:left">${r.snapshot_date}</td><td>${fmt$(r.total_value)}</td><td>${fmtP(r.top10_sku_pct)}</td><td>${fmtP(r.top3_vendor_pct)}</td><td>${esc(r.top_vendor)} · ${fmtP(r.top_vendor_pct)}</td><td>${fmtN(r.sku_count)}</td><td>${fmtN(r.vendor_count)}</td></tr>`));
+  }
+  if (anTab === 'customers') {
+    ctl.innerHTML = `<label class="f">One customer is at least<select id="ccShare"><option value="0.5" selected>50%</option><option value="0.7">70%</option><option value="0.9">90%</option></select></label><label class="f">of sales, min sales<select id="ccMin"><option value="2000" selected>$2,000</option><option value="10000">$10,000</option><option value="50000">$50,000</option></select></label><button class="btn quiet" id="ccGo" style="margin-top:16px">Refresh</button>`;
+    const draw = async () => {
+      const { data, error } = await sb.rpc('rpc_customer_concentration', { p_months: 12, p_min_share: +$('ccShare').value, p_min_sales: +$('ccMin').value, p_limit: 300 });
+      if (error) { host.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
+      note.textContent = `${data.length} SKUs where a single customer drives most of the last 12 months of demand. If that customer leaves, the ROP is wrong. Sorted by on-hand value once a snapshot exists.`;
+      host.innerHTML = tbl(['SKU', 'Vendor', 'Top customer', 'Their share', 'Customers', 'Sales 12m', 'Units 12m', 'On hand value'], data.map(r => `<tr>${skuLink(r.product_number, r.product_desc)}<td style="text-align:left">${esc(r.vendor_name || '')}</td><td>#${r.top_customer}</td><td class="${+r.top_customer_share >= 0.9 ? 'neg' : ''}">${fmtP(r.top_customer_share)}</td><td>${r.customers}</td><td>${fmt$(r.sales)}</td><td>${fmtN(r.units)}</td><td>${r.on_hand_value == null ? '<span class="dim">no snapshot</span>' : fmt$(r.on_hand_value)}</td></tr>`)); wire();
+    };
+    $('ccGo').onclick = draw; draw();
+  }
+
+  if (anTab === 'thennow') {
+    const opts = snapshots.map(x => `<option value="${x.snapshot_date}">${x.snapshot_date}${x.is_month_end ? '' : ' (weekly)'}</option>`).join('');
+    const dflt = snapshots.find(x => x.snapshot_date <= new Date(new Date(snapDate).setFullYear(new Date(snapDate).getFullYear() - 1)).toISOString().slice(0, 10))?.snapshot_date || snapshots[snapshots.length - 1]?.snapshot_date;
+    ctl.innerHTML = `<label class="f">Then<select id="tnThen">${opts}</select></label><label class="f">Now<select id="tnNow">${opts}</select></label>
+      <label class="f">By<div class="seg" id="tnSeg"><button data-g="branch_code" class="on">Branch</button><button data-g="vendor_code">Vendor</button><button data-g="node1">Node</button><button data-g="product_number">SKU</button></div></label>
+      <label class="f check" title="Leave out branches that had no stock on the earlier date, so an opening (Hub, Anaheim) doesn't read as growth"><input id="tnSame" type="checkbox" checked> Same-store only — skip branches that didn't exist on the earlier date</label>
+      <label class="f">Show<select id="tnVerdict"><option value="">All verdicts</option><option>Built — demand doesn't support</option><option>Built — no demand</option><option>Built — supported</option><option>Drawn down — stockout risk</option><option>Drawn down — no demand</option><option>Drawn down — fine</option><option>Gone — still selling</option><option>Cleared out</option><option>New stock</option><option>Stable</option></select></label>
+      <button class="btn quiet" id="tnGo" style="margin-top:16px">Compare</button>`;
+    $('tnThen').value = dflt; $('tnNow').value = snapDate;
+    let g = 'branch_code', filt = null;   // filt: { groups: [], keys: [], labels: [] }
+    const nodeNext = lvl => /^node\d$/.test(lvl) && +lvl.slice(4) < NODE_DEPTH ? 'node' + (+lvl.slice(4) + 1) : 'product_number';
+    const vClass = v => /doesn't support|no demand|stockout|still selling/.test(v) ? 'neg' : (/supported|fine|Stable/.test(v) ? 'dim' : '');
+    const draw = async () => {
+      host.innerHTML = '<p class="note">Comparing…</p>';
+      const { data, error } = await sb.rpc('rpc_then_now', { p_then: $('tnThen').value, p_now: $('tnNow').value, p_group: g, p_filter_group: filt ? filt.groups.join('|') : null, p_filter_key: filt ? filt.keys.join('|') : null, p_same_store: $('tnSame').checked, p_limit: 500 });
+      if (error) { host.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
+      const parentKey = filt ? filt.keys[filt.keys.length - 1] : null;
+      let all = data.map(r => (/^node\d$/.test(g) && r.key === parentKey) ? { ...r, label: '(items at this level)', leafItems: true } : r);
+      if (/^node\d$/.test(g) && all.length === 1 && all[0].leafItems) { g = 'product_number'; return draw(); }
+      const v = $('tnVerdict').value; const rows = v ? all.filter(r => r.verdict === v) : all;
+      const tThen = rows.reduce((a, r) => a + +r.then_value, 0), tNow = rows.reduce((a, r) => a + +r.now_value, 0), tCogs = rows.reduce((a, r) => a + +r.cogs_between, 0);
+      let excluded = '';
+      if ($('tnSame').checked) {
+        const { data: br } = await sb.rpc('rpc_then_now', { p_then: $('tnThen').value, p_now: $('tnNow').value, p_group: 'branch_code', p_filter_group: null, p_filter_key: null, p_same_store: false, p_limit: 20 });
+        const missing = (br || []).filter(b => +b.then_value === 0 && +b.now_value > 0).map(b => `${BRANCH_NAMES[b.key] || b.key} (${fmt$(b.now_value)} now)`);
+        if (missing.length) excluded = ` Same-store leaves out ${missing.join(', ')} because it had no stock on ${$('tnThen').value}; untick to include.`;
+      }
+      note.textContent = `${$('tnThen').value} → ${$('tnNow').value}${filt ? ' · within ' + filt.labels.join(' › ') : ''}: ${fmt$(tThen)} → ${fmt$(tNow)} (${(tNow - tThen >= 0 ? '+' : '') + fmt$(tNow - tThen)}). "Days" is days of supply at each date from that period's trailing-12-month cost of goods. Verdicts flag moves of 20% or more.${excluded}`;
+      const gl = /^node\d$/.test(g) ? 'Node' : { branch_code: 'Branch', vendor_code: 'Vendor', product_number: 'SKU' }[g];
+      host.innerHTML = (filt ? `<button class="btn quiet" id="tnBack" style="margin-bottom:10px">← Back</button>` : '') +
+        tbl([gl, 'Then', 'Now', 'Change', '%', 'Sold between (at cost)', 'Days then', 'Days now', 'Verdict'], rows.map(r => `<tr class="${g === 'product_number' ? '' : 'node'}">
+          <td>${g === 'product_number' ? `<a href="#" data-sku="${esc(r.key)}" style="font-weight:500;text-decoration:none">${esc(r.key)}</a><br><span class="dim" style="font-size:12px">${esc(r.label)}</span>` : `<span data-k="${esc(r.key)}" data-leaf="${r.leafItems ? 1 : ''}" data-l="${esc(g === 'branch_code' ? (BRANCH_NAMES[r.key] || r.key) : r.label)}" style="cursor:pointer;color:var(--navy);font-weight:500">${esc(g === 'branch_code' ? (BRANCH_NAMES[r.key] || r.key) : r.label)}</span>`}</td>
+          <td>${fmt$(r.then_value)}</td><td>${fmt$(r.now_value)}</td><td class="${+r.delta < 0 ? 'neg' : ''}">${(+r.delta >= 0 ? '+' : '') + fmt$(r.delta)}</td><td>${r.delta_pct == null ? '—' : (+r.delta_pct >= 0 ? '+' : '') + fmtP(r.delta_pct)}</td>
+          <td>${fmt$(r.cogs_between)}</td><td>${r.days_supply_then == null ? '—' : fmtN(r.days_supply_then)}</td><td>${r.days_supply_now == null ? '—' : fmtN(r.days_supply_now)}</td><td class="${vClass(r.verdict)}" style="text-align:left">${esc(r.verdict)}</td></tr>`).concat([
+          `<tr class="total"><td>Total</td><td>${fmt$(tThen)}</td><td>${fmt$(tNow)}</td><td class="${tNow - tThen < 0 ? 'neg' : ''}">${(tNow - tThen >= 0 ? '+' : '') + fmt$(tNow - tThen)}</td><td>${tThen ? ((tNow - tThen) / tThen >= 0 ? '+' : '') + fmtP((tNow - tThen) / tThen) : '—'}</td><td>${fmt$(tCogs)}</td><td>${tCogs ? fmtN(tThen / (tCogs / Math.max(1, (new Date($('tnNow').value) - new Date($('tnThen').value)) / 864e5))) : '—'}</td><td>${tCogs ? fmtN(tNow / (tCogs / Math.max(1, (new Date($('tnNow').value) - new Date($('tnThen').value)) / 864e5))) : '—'}</td><td></td></tr>`]));
+      wire();
+      host.querySelectorAll('span[data-k]').forEach(el => el.onclick = () => {
+        filt = filt ? { groups: [...filt.groups, g], keys: [...filt.keys, el.dataset.k], labels: [...filt.labels, el.dataset.l] } : { groups: [g], keys: [el.dataset.k], labels: [el.dataset.l] };
+        g = el.dataset.leaf ? 'product_number' : nodeNext(g);
+        $('tnSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.g === (g.startsWith('node') ? 'node1' : g))); draw();
+      });
+      const back = $('tnBack'); if (back) back.onclick = () => {
+        g = filt.groups[filt.groups.length - 1];
+        filt = filt.groups.length > 1 ? { groups: filt.groups.slice(0, -1), keys: filt.keys.slice(0, -1), labels: filt.labels.slice(0, -1) } : null;
+        $('tnSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.g === (g.startsWith('node') ? 'node1' : g))); draw();
+      };
+    };
+    $('tnSeg').querySelectorAll('button').forEach(b => b.onclick = () => { $('tnSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); g = b.dataset.g; filt = null; draw(); });
+    $('tnGo').onclick = () => { filt = null; draw(); };
+    $('tnVerdict').onchange = draw;
+    draw();
+  }
+  if (anTab === 'cohorts') {
+    const { data, error } = await sb.rpc('rpc_new_item_cohorts', { p_from: new Date(Date.now() - 730 * 864e5).toISOString().slice(0, 10) });
+    if (error) { host.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
+    const proxy = data.some(r => r.source === 'first sale');
+    note.textContent = (proxy ? 'Until the report carries an item creation date, "created" means first sale, so the 30-day column is 100% by definition. Once created_date is mapped on upload, the real curve appears. ' : '') + 'Click a month for the items in it.';
+    host.innerHTML = tbl(['Cohort', 'Items', 'Sold by 30d', 'Sold by 90d', 'Sold by 180d', 'Units 90d', 'Units 180d', 'Never sold at 180d', 'Source'], data.map(r => `<tr class="node"><td data-m="${r.cohort_month}">${r.cohort_month.slice(0, 7)}</td><td>${r.items}</td><td>${fmtP(r.sold_by_30 / r.items)}</td><td>${fmtP(r.sold_by_90 / r.items)}</td><td>${fmtP(r.sold_by_180 / r.items)}</td><td>${fmtN(r.units_90)}</td><td>${fmtN(r.units_180)}</td><td class="${r.never_sold_180 > 0 ? 'neg' : ''}">${r.never_sold_180}</td><td class="dim">${r.source}</td></tr>`));
+    host.querySelectorAll('td[data-m]').forEach(td => td.onclick = async () => {
+      const { data: d } = await sb.rpc('rpc_new_item_detail', { p_cohort_month: td.dataset.m });
+      note.textContent = `Items first seen in ${td.dataset.m.slice(0, 7)}, most units first.`;
+      host.innerHTML = `<button class="btn quiet" id="backC" style="margin-bottom:10px">Back to cohorts</button>` + tbl(['SKU', 'Vendor', 'Created', '30d', '90d', '180d', 'All time', 'On hand', 'Value', 'Code'], d.map(r => `<tr>${skuLink(r.product_number, r.product_desc)}<td style="text-align:left">${esc(r.vendor_name || '')}</td><td>${r.created}</td><td>${fmtN(r.units_30)}</td><td>${fmtN(r.units_90)}</td><td>${fmtN(r.units_180)}</td><td>${fmtN(r.units_total)}</td><td>${r.on_hand == null ? '—' : fmtN(r.on_hand)}</td><td>${r.on_hand_value == null ? '—' : fmt$(r.on_hand_value)}</td><td>${r.velocity_code || ''}</td></tr>`));
+      $('backC').onclick = runAnalysis; wire();
+    });
+  }
+}
+
+
+/* ---------- upload ---------- */
+let parsed = null, headers = [], mapping = {}, wideCols = [], whMap = {}, informWh = [];
+const drop = $('drop');
+['dragenter','dragover'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', ev => { const f = ev.dataTransfer.files[0]; if (f) readFile(f); });
+$('file').onchange = e => { if (e.target.files[0]) readFile(e.target.files[0]); };
+
+async function readFile(f) {
+  msg('upMsg', 'Reading ' + f.name + '…');
+  show('mapCard', false); show('prevCard', false);
+  const buf = await f.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: true });
+  if (!rows.length) { msg('upMsg', 'That file has no data rows.', 'err'); return; }
+  parsed = { name: f.name, rows };
+  const allHeaders = Object.keys(rows[0]);
+  informWh = [...new Set(allHeaders.map(h => (/^Whse\s*(\d+)\s+On Hand$/i.exec(h.trim()) || [])[1]).filter(Boolean))];
+  wideCols = informWh.length ? [] : allHeaders.filter(h => /^Qty-\d+$/i.test(h.trim()));
+  headers = informWh.length
+    ? allHeaders.filter(h => !/^Whse\s*\d+\s/i.test(h.trim()) && !/^Non-stock status for warehouse/i.test(h.trim()))
+    : allHeaders.filter(h => !/^(Qty|Value)-\d+$/i.test(h.trim()) && !/all whses/i.test(h));
+  if (wideCols.length || informWh.length) {
+    const { data: wm } = await sb.from('warehouse_map').select('*').eq('active', true);
+    whMap = Object.fromEntries((wm || []).map(r => [r.whse, r]));
+  }
+  const { data: saved } = await sb.from('column_map').select('*');
+  const savedMap = Object.fromEntries((saved || []).map(r => [r.source_header, r.target_field]));
+  mapping = {};
+  headers.forEach(h => mapping[h] = savedMap[h] || guessField(h));
+  const m = $('map'); m.innerHTML = '';
+  headers.forEach(h => {
+    const a = document.createElement('div'); a.className = 'h'; a.title = h; a.textContent = h;
+    const ar = document.createElement('div'); ar.className = 'arrow'; ar.textContent = '→';
+    const s = document.createElement('select');
+    s.innerHTML = FIELDS.map(([v, l]) => `<option value="${v}" ${mapping[h] === v ? 'selected' : ''}>${l}</option>`).join('');
+    s.onchange = () => mapping[h] = s.value;
+    m.append(a, ar, s);
+  });
+  const whNote = informWh.length ? ` Inform item report detected — warehouses ${informWh.join(', ')}, each mapped to a branch via the warehouse map.` : wideCols.length ? ` Warehouse columns found: ${wideCols.map(c => c.replace(/qty-/i, '')).join(', ')} — mapped to branches via the warehouse map (${Object.values(whMap).filter(w => w.branch_code == null).map(w => w.whse).join(', ') || 'none'} excluded).` : '';
+  msg('upMsg', `${f.name}: ${rows.length.toLocaleString()} rows, ${headers.length} columns.${whNote}`, 'ok');
+  show('mapCard');
+}
+function parseDate(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return isNaN(v) ? null : v.toISOString().slice(0, 10);
+  const t = String(v).trim(); let m;
+  if ((m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t))) return `${m[1]}-${m[2]}-${m[3]}`;
+  if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t))) return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  return null;
+}
+function guessField(h) {
+  const k = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const tests = [
+    ['product_number', /^product15$|^product$/], ['product_desc', /^descriptionlineone$/], ['mfr_no', /^manufacturerno$/],
+    ['vendor_code', /^primaryvendorbi$/], ['vendor_name', /^primaryvendornamebi$/], ['web_category', /^jswebnodematrix$/], ['web_node', /^jswebnodedescription$/],
+    ['created_date', /^datecreated$/], ['last_receipt_date', /^lastreceiveddate$/], ['last_sale_date', /^lastsolddate$/],
+    ['unit_cost', /^c2costwhse\d+$/], ['cost_c1', /^c1costwhse\d+$/], ['cost_c3', /^c3costwhse\d+$/], ['cost_c5', /^c5costwhse\d+$/], ['cost_c6', /^c6costwhse\d+$/],
+    ['item_status', /^status$/], ['demand_12m', /^demand$/], ['replaces_product', /^purchasehistorylinkproduct$/],
+    ['branch_code', /^(branch|br|whse|warehouse|loc)/], ['product_number', /(product|item|part|sku)(num|no|number|id|code)?$|^(item|part|sku)$/],
+    ['product_desc', /desc/], ['vendor_code', /vend(or)?(code|num|no|id)/], ['vendor_name', /vend(or)?name|^vendor$/], ['ignore', /^bin$|allwhses/],
+    ['web_node', /node/], ['qty_on_hand', /onhand|qoh|onhnd/], ['qty_committed', /commit|alloc/], ['qty_on_order', /onorder|onord|qoo/],
+    ['unit_cost', /c2|avgcost|averagecost|unitcost|^cost$/], ['min_rop', /rop|reorder|orderpoint|^min/], ['order_qty', /orderqty|^max|eoq/],
+    ['last_sale_date', /lastsale|lastsold/], ['last_receipt_date', /lastrec|lastreceipt/], ['velocity_code', /veloc|class|rank/],
+    ['stock_status', /status/], ['created_date', /creat|added|dateadded|setup/], ['uom', /^uom|unitofmeasure/], ['buy_multiple', /multiple|pack/]
+  ];
+  for (const [f, re] of tests) if (re.test(k)) return f;
+  return 'ignore';
+}
+let staged = null;
+$('previewBtn').onclick = () => {
+  const used = Object.values(mapping);
+  const missing = REQUIRED.filter(f => !used.includes(f) && !((wideCols.length || informWh.length) && (f === 'branch_code' || f === 'qty_on_hand')));
+  if (missing.length) { $('mapNote').textContent = 'Still need: ' + missing.map(f => FIELDS.find(x => x[0] === f)[1]).join(', '); return; }
+  const dup = FIELDS.map(f => f[0]).filter(f => f !== 'ignore' && used.filter(u => u === f).length > 1);
+  if (dup.length) { $('mapNote').textContent = 'Two columns are mapped to the same field: ' + dup.join(', '); return; }
+  $('mapNote').textContent = '';
+  const inv = {}; Object.entries(mapping).forEach(([h, f]) => { if (f !== 'ignore') inv[f] = h; });
+  const out = [], bad = []; const branches = new Set(), skus = new Set(), unknownWh = new Set(); let units = 0, value = 0, excludedValue = 0;
+  parsed.rows.forEach((r, i) => {
+    const o = {};
+    for (const [f, h] of Object.entries(inv)) {
+      let v = r[h];
+      if (v === '' ) v = null;
+      if (NUMERIC.includes(f)) { v = v == null ? null : +String(v).replace(/[$,]/g, ''); if (v != null && isNaN(v)) v = null; }
+      else if (DATES.includes(f)) { v = parseDate(v); }
+      else if (f === 'primary_vendor') v = v == null ? null : /^(y|yes|true|1)$/i.test(String(v));
+      else if (f === 'branch_code') { v = parseInt(String(v).replace(/\D/g, '')); if (isNaN(v)) v = null; }
+      else v = v == null ? null : String(v).trim();
+      o[f] = v;
+    }
+
+    o.unit_cost = o.unit_cost ?? 0;
+    if (informWh.length) {
+      if (!o.product_number) { bad.push(i + 2); return; }
+      const num = x => { const n = +String(x ?? '').replace(/[$,]/g, ''); return isNaN(n) ? null : n; };
+      const byBranch = {};
+      for (const w of informWh) {
+        const g = k => r[Object.keys(r).find(h => new RegExp(`^Whse\\s*${w}\\s+${k}$`, 'i').test(h.trim())) ?? ''];
+        const ns = r[Object.keys(r).find(h => new RegExp(`^Non-stock status for warehouse\\s*0*${w}$`, 'i').test(h.trim())) ?? ''];
+        const onHand = num(g('On Hand')) || 0, committed = num(g('Committed')), onPo = num(g('OnPO')), minQ = num(g('Min Qty'));
+        const nonStock = ns == null ? null : /^y/i.test(String(ns));
+        if (!onHand && !committed && !onPo && !minQ && nonStock !== false) continue;   // skip warehouses where the item is neither stocked nor present
+        const m = whMap[String(w).padStart(2, '0')];
+        if (!m) { unknownWh.add(w); continue; }
+        if (m.branch_code == null) { excludedValue += onHand * o.unit_cost; continue; }
+        const b = byBranch[m.branch_code] ||= { qty: 0, committed: 0, onPo: 0, minQ: null, hits: 0, rank: null, exp: null, nonStock: null, whse: {} };
+        b.qty += onHand; b.committed += committed || 0; b.onPo += onPo || 0; b.hits += num(g('Hits')) || 0;
+        b.minQ = (b.minQ ?? 0) + (minQ ?? 0); b.rank = b.rank ?? (g('Rank') || null); b.exp = b.exp ?? parseDate(g('Min/Max Exp Date')); b.nonStock = nonStock;
+        b.whse[w] = onHand;
+      }
+      for (const [bc, b] of Object.entries(byBranch)) {
+        const line = { ...o, branch_code: +bc, qty_on_hand: b.qty, qty_committed: b.committed, qty_on_order: b.onPo, min_rop: b.minQ, hits: b.hits, velocity_code: b.rank, rop_exp_date: b.exp, non_stock: b.nonStock, extra: { ...(o.extra || {}), whse: b.whse } };
+        branches.add(+bc); skus.add(o.product_number); units += b.qty; value += b.qty * o.unit_cost; out.push(line);
+      }
+      return;
+    }
+    if (wideCols.length) {
+      if (!o.product_number) { bad.push(i + 2); return; }
+      const byBranch = {};
+      for (const c of wideCols) {
+        const w = c.trim().replace(/qty-/i, ''), q = +String(r[c] ?? 0).replace(/[$,]/g, '') || 0;
+        if (!q) continue;
+        const m = whMap[w];
+        if (!m) { unknownWh.add(w); continue; }
+        if (m.branch_code == null) { excludedValue += q * o.unit_cost; continue; }
+        const b = byBranch[m.branch_code] ||= { qty: 0, whse: {} }; b.qty += q; b.whse[w] = q;
+      }
+      for (const [bc, b] of Object.entries(byBranch)) {
+        const line = { ...o, branch_code: +bc, qty_on_hand: b.qty, extra: { ...(o.extra || {}), whse: b.whse } };
+        branches.add(+bc); skus.add(o.product_number); units += b.qty; value += b.qty * o.unit_cost; out.push(line);
+      }
+      return;
+    }
+    if (o.branch_code == null || !o.product_number) { bad.push(i + 2); return; }
+    o.qty_on_hand = o.qty_on_hand ?? 0;
+    branches.add(o.branch_code); skus.add(o.product_number); units += o.qty_on_hand; value += o.qty_on_hand * o.unit_cost;
+    out.push(o);
+  });
+  staged = out;
+  $('pRows').textContent = out.length.toLocaleString(); $('pBranches').textContent = [...branches].sort((a, b) => a - b).map(b => BRANCH_NAMES[b] || b).join(', ');
+  $('pSkus').textContent = skus.size.toLocaleString(); $('pUnits').textContent = fmtN(units); $('pValue').textContent = fmt$(value);
+  const warn = [];
+  if (bad.length) warn.push(`${bad.length} row(s) skipped for missing branch or product number (first few: ${bad.slice(0, 8).join(', ')}).`);
+  if (unknownWh.size) warn.push(`Warehouse(s) ${[...unknownWh].join(', ')} are not in the warehouse map and were left out — add them in Access → Warehouses if they belong somewhere.`);
+  if (excludedValue) warn.push(`${fmt$(excludedValue)} in excluded warehouses left out, per the map.`);
+  msg('pWarn', warn.join(' '), unknownWh.size || bad.length ? 'err' : (warn.length ? '' : ''));
+  show('prevCard');
+};
+$('commitBtn').onclick = async () => {
+  const date = $('upDate').value; if (!date) { msg('pWarn', 'Pick a snapshot date first.', 'err'); return; }
+  const existing = snapshots.find(s => s.snapshot_date === date);
+  if (existing && !confirm(`A snapshot for ${date} already exists (${existing.row_count} rows). Replace it? The old one is kept in the archive.`)) return;
+  $('commitBtn').disabled = true; show('bar'); const bar = $('bar').firstElementChild;
+  try {
+    // remember the mapping
+    const mapRows = Object.entries(mapping).filter(([, f]) => f !== 'ignore').map(([h, f]) => ({ source_header: h, target_field: f }));
+    if (mapRows.length) await sb.from('column_map').upsert(mapRows);
+    await sb.from('snapshot_stage').delete().eq('staged_by', me.id);
+    const CH = 1000;
+    for (let i = 0; i < staged.length; i += CH) {
+      const chunk = staged.slice(i, i + CH).map(o => ({ ...o, snapshot_date: date }));
+      const { error } = await sb.from('snapshot_stage').insert(chunk);
+      if (error) throw error;
+      bar.style.width = Math.round(((i + chunk.length) / staged.length) * 100) + '%';
+      $('commitNote').textContent = `Staging ${Math.min(i + CH, staged.length).toLocaleString()} of ${staged.length.toLocaleString()}…`;
+    }
+    $('commitNote').textContent = 'Saving snapshot and refreshing sales…';
+    const { data, error } = await sb.rpc('commit_snapshot', { p_date: date, p_filename: parsed.name, p_note: null, p_month_end: $('upME').checked ? true : null });
+    if (error) throw error;
+    msg('pWarn', `Saved. ${(+data.rows).toLocaleString()} rows, ${fmt$(data.total_value)} at cost${+data.archived_rows ? `, ${(+data.archived_rows).toLocaleString()} rows from the previous upload moved to the archive` : ''}.`, 'ok');
+    $('commitNote').textContent = '';
+    await loadSnapshots();
+  } catch (e) {
+    msg('pWarn', 'Not saved: ' + e.message, 'err'); $('commitNote').textContent = '';
+  } finally { $('commitBtn').disabled = false; show('bar', false); bar.style.width = '0'; }
+};
+
+/* ---------- access ---------- */
+async function loadWarehouses() {
+  const { data } = await sb.from('warehouse_map').select('*').order('whse');
+  $('whTable').innerHTML = '<tr><th>Whse</th><th>Branch</th><th>Label</th><th>Note</th><th>Active</th></tr>' +
+    (data || []).map(w => `<tr><td>${esc(w.whse)}</td><td>${w.branch_code == null ? '<span class="dim">excluded</span>' : (BRANCH_NAMES[w.branch_code] || w.branch_code)}</td><td>${esc(w.label || '')}</td><td class="dim">${esc(w.note || '')}</td><td>${w.active ? 'yes' : 'no'}</td></tr>`).join('');
+}
+$('wSave').onclick = async () => {
+  const whse = $('wWhse').value.trim().padStart(2, '0'); if (!whse) return;
+  const { error } = await sb.from('warehouse_map').upsert({ whse, branch_code: $('wBranch').value ? +$('wBranch').value : null, label: $('wLabel').value.trim() || null, note: $('wNote').value.trim() || null, updated_at: new Date().toISOString() });
+  msg('aMsg', error ? error.message : `Warehouse ${whse} saved.`, error ? 'err' : 'ok'); loadWarehouses();
+};
+async function loadUsers() {
+  loadWarehouses();
+  const { data } = await sb.from('access').select('*').order('email');
+  $('users').innerHTML = '<tr><th>Name</th><th>Email</th><th>Role</th><th>Sees cost</th><th>Active</th></tr>' +
+    (data || []).map(u => `<tr><td>${esc(u.full_name || '')}</td><td>${esc(u.email || '')}</td><td>${u.role}</td><td>${u.can_see_cost ? 'yes' : 'no'}</td><td>${u.active ? 'yes' : 'no'}</td></tr>`).join('');
+}
+$('aAdd').onclick = async () => {
+  // Look the user up in the Sales Dashboard profiles table (same project) to get the auth id.
+  const pub = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { db: { schema: 'public' } });
+  await pub.auth.setSession((await sb.auth.getSession()).data.session);
+  const { data: prof } = await pub.from('profiles').select('user_id,email,full_name').eq('email', $('aEmail').value.trim()).maybeSingle();
+  if (!prof) { msg('aMsg', 'No auth account with that email in this Supabase project. Create it in Supabase → Authentication first.', 'err'); return; }
+  const { error } = await sb.from('access').upsert({ user_id: prof.user_id, email: prof.email, full_name: $('aName').value.trim() || prof.full_name, role: $('aRole').value });
+  msg('aMsg', error ? error.message : 'Added.', error ? 'err' : 'ok');
+  loadUsers();
+};
+
+boot();
+</script>
+</body>
+</html>
