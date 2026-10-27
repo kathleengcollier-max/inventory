@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Inventory Hub</title>
-<meta name="app-version" content="0.14">
+<meta name="app-version" content="0.15">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -290,6 +290,7 @@ table.users th{font-size:12px;color:var(--ink-2);font-weight:500}
    Requires the `inv` schema to be listed under Exposed schemas in Supabase → Settings → API.
    ============================================================ */
 const CHANGELOG = [
+  { date: '2026-10-27', v: '0.15', text: 'C4 cost (DC cost including the month\'s specials) is now read from the ARW Inventory_Data report and kept on every line, alongside C1, C3, C5 and C6. Vendor codes from the Monday report are padded to the five-digit form the sales history uses (824 → 00824), so vendor drills and joins line up; the two earlier Monday snapshots were corrected in place.' },
   { date: '2026-09-16', v: '0.14', text: 'Upload page reordered: drop the file, match columns, check totals and save — all in a column — with the Snapshots list moved to the bottom. The drop zone now names the report (ARW Inventory_Data) and shows when the last upload happened and which snapshot date it was saved as.' },
   { date: '2026-09-02', v: '0.13', text: 'SKU rows on the Value drill now lead with the JS part number (Product) with the description underneath, matching every other screen; the label had been showing the description alone. Vendor inflation gains a By category / By node toggle that drills the same way as the Value tree — like-for-like cost change per category, then per node.' },
   { date: '2026-09-02', v: '0.12', text: 'Snapshots list on the Upload tab with a Remove button per snapshot. Removing moves every line to the archive (nothing is deleted) and a Restore link brings it back. Re-uploading a date still works the same way as before.' },
@@ -321,10 +322,10 @@ const FIELDS = [
   ['unit_cost','Unit cost (C2) *'],['min_rop','Min ROP'],['order_qty','Order qty / max'],
   ['last_sale_date','Last sale date'],['last_receipt_date','Last receipt date'],
   ['velocity_code','Velocity / class code'],['stock_status','Stock status'],['primary_vendor','Primary vendor'],
-  ['uom','Unit of measure'],['buy_multiple','Buy multiple'],['created_date','Item creation date'],['mfr_no','Manufacturer number'],['web_category','Web node ID (matrix)'],['demand_12m','12-month demand'],['item_status','Item status'],['cost_c1','C1 cost (DC)'],['cost_c3','C3 cost (landed)'],['cost_c5','C5 cost (last PO)'],['cost_c6','C6 cost (DC, no specials)'],['replaces_product','Replaces (older product)'],['ignore','— ignore —']
+  ['uom','Unit of measure'],['buy_multiple','Buy multiple'],['created_date','Item creation date'],['mfr_no','Manufacturer number'],['web_category','Web node ID (matrix)'],['demand_12m','12-month demand'],['item_status','Item status'],['cost_c1','C1 cost (DC)'],['cost_c3','C3 cost (landed)'],['cost_c4','C4 cost (DC, with specials)'],['cost_c5','C5 cost (last PO)'],['cost_c6','C6 cost (DC, no specials)'],['replaces_product','Replaces (older product)'],['ignore','— ignore —']
 ];
 const REQUIRED = ['branch_code','product_number','qty_on_hand','unit_cost'];
-const NUMERIC = ['qty_on_hand','qty_committed','qty_on_order','unit_cost','min_rop','order_qty','buy_multiple','demand_12m','cost_c1','cost_c3','cost_c5','cost_c6'];
+const NUMERIC = ['qty_on_hand','qty_committed','qty_on_order','unit_cost','min_rop','order_qty','buy_multiple','demand_12m','cost_c1','cost_c3','cost_c4','cost_c5','cost_c6'];
 const DATES = ['last_sale_date','last_receipt_date','created_date'];
 
 const $ = id => document.getElementById(id);
@@ -744,7 +745,7 @@ function guessField(h) {
     ['product_number', /^product15$|^product$/], ['product_desc', /^descriptionlineone$/], ['mfr_no', /^manufacturerno$/],
     ['vendor_code', /^primaryvendorbi$/], ['vendor_name', /^primaryvendornamebi$/], ['web_category', /^jswebnodematrix$/], ['web_node', /^jswebnodedescription$/],
     ['created_date', /^datecreated$/], ['last_receipt_date', /^lastreceiveddate$/], ['last_sale_date', /^lastsolddate$/],
-    ['unit_cost', /^c2costwhse\d+$/], ['cost_c1', /^c1costwhse\d+$/], ['cost_c3', /^c3costwhse\d+$/], ['cost_c5', /^c5costwhse\d+$/], ['cost_c6', /^c6costwhse\d+$/],
+    ['unit_cost', /^c2costwhse\d+$/], ['cost_c1', /^c1costwhse\d+$/], ['cost_c3', /^c3costwhse\d+$/], ['cost_c4', /^c4costwhse\d+$/], ['cost_c5', /^c5costwhse\d+$/], ['cost_c6', /^c6costwhse\d+$/],
     ['item_status', /^status$/], ['demand_12m', /^demand$/], ['replaces_product', /^purchasehistorylinkproduct$/],
     ['branch_code', /^(branch|br|whse|warehouse|loc)/], ['product_number', /(product|item|part|sku)(num|no|number|id|code)?$|^(item|part|sku)$/],
     ['product_desc', /desc/], ['vendor_code', /vend(or)?(code|num|no|id)/], ['vendor_name', /vend(or)?name|^vendor$/], ['ignore', /^bin$|allwhses/],
@@ -775,6 +776,7 @@ $('previewBtn').onclick = () => {
       else if (DATES.includes(f)) { v = parseDate(v); }
       else if (f === 'primary_vendor') v = v == null ? null : /^(y|yes|true|1)$/i.test(String(v));
       else if (f === 'branch_code') { v = parseInt(String(v).replace(/\D/g, '')); if (isNaN(v)) v = null; }
+      else if (f === 'vendor_code') { v = v == null ? null : String(v).trim(); if (v && /^\d{1,4}$/.test(v)) v = v.padStart(5, '0'); }
       else v = v == null ? null : String(v).trim();
       o[f] = v;
     }
