@@ -3,8 +3,12 @@
 <head>
 <meta charset="utf-8">
 <title>Inventory Hub</title>
-<meta name="app-version" content="0.15">
+<meta name="app-version" content="0.16">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#1F3A7A">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
@@ -290,6 +294,7 @@ table.users th{font-size:12px;color:var(--ink-2);font-weight:500}
    Requires the `inv` schema to be listed under Exposed schemas in Supabase → Settings → API.
    ============================================================ */
 const CHANGELOG = [
+  { date: '2026-10-30', v: '0.16', text: 'Favicon: three stacked boxes with one flagged, on the Johnstone navy. Shows in the browser tab, bookmarks and on a phone home screen.' },
   { date: '2026-10-27', v: '0.15', text: 'C4 cost (DC cost including the month\'s specials) is now read from the ARW Inventory_Data report and kept on every line, alongside C1, C3, C5 and C6. Vendor codes from the Monday report are padded to the five-digit form the sales history uses (824 → 00824), so vendor drills and joins line up; the two earlier Monday snapshots were corrected in place.' },
   { date: '2026-09-16', v: '0.14', text: 'Upload page reordered: drop the file, match columns, check totals and save — all in a column — with the Snapshots list moved to the bottom. The drop zone now names the report (ARW Inventory_Data) and shows when the last upload happened and which snapshot date it was saved as.' },
   { date: '2026-09-02', v: '0.13', text: 'SKU rows on the Value drill now lead with the JS part number (Product) with the description underneath, matching every other screen; the label had been showing the description alone. Vendor inflation gains a By category / By node toggle that drills the same way as the Value tree — like-for-like cost change per category, then per node.' },
